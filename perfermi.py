@@ -2,6 +2,7 @@ import streamlit as st
 import scipy.constants as const
 import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
 
 
 
@@ -92,6 +93,99 @@ COMMON_METALS_REF = {
     "Fe": 11.1,
     "Au": 5.53
 }
+
+# ==========================================
+# 3. FERMI SURFACE VISUALIZER
+# ==========================================
+
+def draw_fermi_surface():
+    st.title("👀 Fermi Surface Visualizer")
+    st.markdown("""<span style='font-size:1.3rem'>Select a metal to see how **Electron Density** affects the size of the Fermi Surface.</span>
+    <br>
+    <span style='color:red'>**Note**: The surface strictly follows the **Quantum Free Electron Model (QFET)** assumptions and does not account for real-world complexities.</span>
+    """, unsafe_allow_html=True)
+    # k_f is in units of 1/Angstrom
+    metal_data = {
+        "Cesium (Cs)":    {"Ef": 1.59, "k_f": 0.65, "color": "#FFD700"}, # Gold-ish
+        "Sodium (Na)":    {"Ef": 3.24, "k_f": 0.92, "color": "#00CC96"}, # Green
+        "Copper (Cu)":    {"Ef": 7.00, "k_f": 1.36, "color": "#EF553B"}, # Red/Copper
+        "Aluminum (Al)":  {"Ef": 11.7, "k_f": 1.75, "color": "#636EFA"}, # Blue
+        "Beryllium (Be)": {"Ef": 14.3, "k_f": 1.94, "color": "#AB63FA"}  # Purple
+    }
+
+    # --- 2. Button Selection Logic ---
+    # Initialize session state if not present (Default to Sodium)
+    if 'selected_metal' not in st.session_state:
+        st.session_state.selected_metal = "Sodium (Na)"
+
+    # Create 5 columns for the buttons
+    cols = st.columns(5)
+    
+    # Loop through metals to create buttons
+    for i, (metal_name, data) in enumerate(metal_data.items()):
+        if cols[i].button(metal_name):
+            st.session_state.selected_metal = metal_name
+
+    # Get data for the currently selected metal
+    current_metal = st.session_state.selected_metal
+    k_radius = metal_data[current_metal]["k_f"]
+    energy_val = metal_data[current_metal]["Ef"]
+    surf_color = metal_data[current_metal]["color"]
+
+    # --- 3. Generate the Sphere Mesh ---
+    # Create a mesh of points for a sphere
+    phi = np.linspace(0, 2*np.pi, 50)
+    theta = np.linspace(0, np.pi, 50)
+    phi, theta = np.meshgrid(phi, theta)
+
+    # Spherical to Cartesian conversion
+    x = k_radius * np.sin(theta) * np.cos(phi)
+    y = k_radius * np.sin(theta) * np.sin(phi)
+    z = k_radius * np.cos(theta)
+
+    # --- 4. Plotting with FIXED Axes ---
+    fig = go.Figure()
+
+    # Add the Sphere trace
+    fig.add_trace(go.Surface(
+        x=x, y=y, z=z,
+        colorscale=[[0, surf_color], [1, surf_color]], # Solid single color
+        opacity=0.8,
+        showscale=False, # Hide color bar
+        name=current_metal
+    ))
+
+    # Add a wireframe cage (optional, helps see depth)
+    # This helps visualize the 'space' the sphere is occupying
+    
+    # MAX_LIMIT determines the fixed box size (Beryllium is 1.94, so 2.5 is safe)
+    AXIS_LIMIT = 2.5
+
+    fig.update_layout(
+        title=dict(
+            text=f"<span style='color:{surf_color}'>Fermi Surface of {current_metal}</span><br><sup>Fermi Energy: {energy_val} eV | Radius (k_F): {k_radius} Å⁻¹</sup>",
+            font=dict(size=20) # Optional: Makes the main title slightly larger
+        ),
+        scene=dict(
+            xaxis=dict(range=[-AXIS_LIMIT, AXIS_LIMIT], title="kx (1/Å)"),
+            yaxis=dict(range=[-AXIS_LIMIT, AXIS_LIMIT], title="ky (1/Å)"),
+            zaxis=dict(range=[-AXIS_LIMIT, AXIS_LIMIT], title="kz (1/Å)"),
+            aspectmode='cube'
+        ),
+        margin=dict(l=0, r=0, b=0, t=60), # Increased top margin slightly to fit the colored title
+        height=600
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # --- 5. Explanation ---
+    st.info(f"""
+    **Observation:**
+    You are viewing **{current_metal}**. 
+    * The fixed box extends from -2.5 to +2.5.
+    * Notice how **{current_metal}** takes up {int((k_radius/2.5)*100)}% of the available momentum space.
+    * Compare this with **Cesium** (tiny) or **Beryllium** (huge) to see the effect of electron density.
+    """)
 
 # ==========================================
 # 3. UI: THE CALCULATOR POPUP (Detail View)
@@ -324,6 +418,25 @@ def show_periodic_table():
         width: 100%;
         margin-bottom: 2px;
     }
+    .visualize-btn {
+        display: inline-block;
+        margin-top: 10px;
+        margin-bottom: 20px;
+        padding: 0.6em 1.5em;
+        color: white !important;
+        background-color: transparent;
+        border: 2px solid #5f88b8;
+        border-radius: 4px;
+        text-decoration: none !important;
+        font-family: monospace;
+        font-weight: bold;
+        transition: all 0.3s;
+    }
+    .visualize-btn:hover {
+        background-color: transparent;
+        color: #5f88b8 !important;
+        border-color: #5f88b8;
+    }
 
     /* Element Box */
     .element {
@@ -377,6 +490,13 @@ def show_periodic_table():
     # 5. Header
     #st.title("Interactive Periodic Table")
     st.markdown("<h2 style='text-align: center; color: #dedede; margin-top: 7px;'>Interactive Periodic Table</h2>", unsafe_allow_html=True)
+
+    st.markdown("""
+        <div style="text-align: center;">
+            <a href="?view=visualize" target="_self" class="visualize-btn">🔮 3D VISUALIZE</a>
+        </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h4 style='text-align: center; color: #555; margin-top: -15px;'>Metals are Clickable • Click to calculate the Fermi Energy</h4>", unsafe_allow_html=True)
 
     # 6. HTML Generation
@@ -462,6 +582,9 @@ def main():
     if "element" in params:
         # Show "Popup" / Detail View
         show_calculator_popup(params["element"])
+    
+    elif "view" in params and params["view"]=="visualize":
+        draw_fermi_surface()
     else:
         # Show Master Table
         show_periodic_table()
